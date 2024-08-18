@@ -10,5 +10,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         .compile(&["proto/finance_control.proto"], &["proto"])
         .unwrap();
 
+    // trigger recompilation when a new migration is added
+    println!("cargo:rerun-if-changed=migrations");
+
     Ok(())
 }

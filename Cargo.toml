@@ -10,6 +10,9 @@ tokio = { version = "1.39.2", features = ["full"] }
 tonic = "0.12.1"
 tonic-reflection = "0.12.1"
 uuid = { version = "1.10.0", features = ["v4"] }
+sqlx = { version = "0.8.0", features = ["runtime-tokio-rustls", "postgres"] }
+dotenv = "0.15.0"
+argon2 = "0.5.3"
 
 [build-dependencies]
 tonic-build = "0.12.1"
