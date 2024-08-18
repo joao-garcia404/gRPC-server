@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package finance_control;
+
+service Admin {
+  rpc GetRequestCount(GetRequestCountRequest) returns (GetRequestCountResponse);
+}
+
+message GetRequestCountRequest {}
+
+message GetRequestCountResponse {
+  uint64 count = 1;
+}
+
+service FinanceControl {
+  rpc RegisterUser (RegisterUserRequest) returns (RegisterUserResponse);
+  rpc CreateBankAccount (CreateBankAccountRequest) returns (CreateBankAccountResponse);
+}
+
+message RegisterUserRequest {
+  string name = 1;
+  string email = 2;
+  string password = 3;
+}
+
+message RegisterUserResponse {
+  string user_id = 1;
+}
+
+message CreateBankAccountRequest {
+  string user_id = 1;
+  string name = 2;
+  string account_type = 3;
+  int64 initial_balance = 4;
+}
+
+message CreateBankAccountResponse {
+  string account_id = 1;
+}
