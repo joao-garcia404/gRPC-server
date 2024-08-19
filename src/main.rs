@@ -7,10 +7,9 @@ use std::{net::SocketAddr, sync::Arc};
 use tonic::{transport::Server, Request, Response, Status};
 use uuid::Uuid;
 
-use argon2::{
-    password_hash::{rand_core::OsRng, PasswordHasher, SaltString},
-    Argon2,
-};
+use models::user::User;
+
+pub mod models;
 
 mod proto {
     tonic::include_proto!("finance_control");
@@ -32,57 +31,6 @@ impl FinanceControlService {
         let mut count = self.state.write().await;
         *count += 1;
         println!("Request count: {}", *count);
-    }
-}
-
-#[derive(Debug)]
-struct Password {
-    value: String,
-}
-
-impl Password {
-    fn new(raw: String) -> Password {
-        Password { value: raw }
-    }
-
-    fn get_hashed_value(&mut self) -> Result<(), String> {
-        let salt = SaltString::generate(&mut OsRng);
-
-        let argon2 = Argon2::default();
-        let hash_result = argon2.hash_password(self.value.as_bytes(), &salt);
-
-        match hash_result {
-            Ok(hashed) => {
-                self.value = hashed.to_string();
-                Ok(())
-            }
-            Err(_hash_error) => Err("Error at hashing password".to_owned()),
-        }
-    }
-}
-
-#[derive(Debug)]
-struct User {
-    id: String,
-    name: String,
-    email: String,
-    password: Password,
-    created_at: String,
-}
-
-impl User {
-    fn new(name: String, email: String, raw_password: String) -> Result<User, String> {
-        let mut user = User {
-            id: Uuid::new_v4().to_string(),
-            name,
-            email,
-            password: Password::new(raw_password),
-            created_at: chrono::Utc::now().to_rfc3339(),
-        };
-
-        user.password.get_hashed_value()?;
-
-        Ok(user)
     }
 }
 
