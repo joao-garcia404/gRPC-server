@@ -7,6 +7,7 @@ use std::{net::SocketAddr, sync::Arc};
 use tonic::{transport::Server, Request, Response, Status};
 use uuid::Uuid;
 
+use models::bank_account;
 use models::user::User;
 
 pub mod models;
@@ -78,11 +79,24 @@ impl FinanceControl for FinanceControlService {
         self.incremet_counter().await;
         println!("Received a bank account creation request.");
 
-        let _input = request.get_ref();
+        let input = request.into_inner();
 
-        let account_id = Uuid::new_v4().to_string();
+        let account_type = bank_account::AccountType::from_raw_string(&input.account_type.as_str())
+            .map_err(|err| Status::invalid_argument(err))?;
 
-        let response = proto::CreateBankAccountResponse { account_id };
+        let account = bank_account::BankAccount::new(
+            input.name,
+            input.initial_balance,
+            account_type,
+            input.user_id,
+        )
+        .map_err(|err| Status::invalid_argument(err))?;
+
+        println!("{:?}", account);
+
+        let response = proto::CreateBankAccountResponse {
+            account_id: account.id,
+        };
 
         Ok(Response::new(response))
     }
