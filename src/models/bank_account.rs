@@ -45,7 +45,7 @@ impl BankAccount {
             name,
             balance,
             account_type,
-            user_id: user_id,
+            user_id,
             created_at: Utc::now().to_rfc3339(),
         })
     }
