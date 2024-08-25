@@ -5,7 +5,6 @@ use sqlx::postgres::PgPool;
 use std::env;
 use std::{net::SocketAddr, sync::Arc};
 use tonic::{transport::Server, Request, Response, Status};
-use uuid::Uuid;
 
 use models::bank_account;
 use models::user::User;
@@ -46,8 +45,6 @@ impl FinanceControl for FinanceControlService {
 
         let input = request.into_inner();
 
-        let user_id = Uuid::new_v4().to_string();
-
         let user = User::new(input.name, input.email, input.password)
             .map_err(|_err| Status::unknown("Internal server error"))?;
 
@@ -67,7 +64,7 @@ impl FinanceControl for FinanceControlService {
                 Status::unknown("Internal server error")
             })?;
 
-        let response = proto::RegisterUserResponse { user_id };
+        let response = proto::RegisterUserResponse { user_id: user.id };
 
         Ok(Response::new(response))
     }
@@ -81,18 +78,44 @@ impl FinanceControl for FinanceControlService {
 
         let input = request.into_inner();
 
+        let user_exists_query = "SELECT * FROM users WHERE id::text = $1";
+
+        let _ = sqlx::query(user_exists_query)
+            .bind(&input.user_id)
+            .fetch_one(&self.db_pool)
+            .await
+            .map_err(|err| {
+                println!("{err}");
+                Status::invalid_argument("User not found".to_owned())
+            })?;
+
         let account_type = bank_account::AccountType::from_raw_string(&input.account_type.as_str())
             .map_err(|err| Status::invalid_argument(err))?;
 
         let account = bank_account::BankAccount::new(
             input.name,
-            input.initial_balance,
+            input.initial_balance * 100,
             account_type,
             input.user_id,
         )
         .map_err(|err| Status::invalid_argument(err))?;
 
-        println!("{:?}", account);
+        let insert_bank_account_query =
+        "INSERT INTO bank_accounts (id, name, balance, type, user_id, created_at) VALUES ($1::uuid, $2, $3, $4::bankaccounttype, $5::uuid, $6::timestamp)";
+
+        sqlx::query(insert_bank_account_query)
+            .bind(&account.id)
+            .bind(&account.name)
+            .bind(&account.balance)
+            .bind(&account.account_type.to_string())
+            .bind(&account.user_id)
+            .bind(&account.created_at)
+            .execute(&self.db_pool)
+            .await
+            .map_err(|err| {
+                println!("Error while creating a bank account {:?}", err);
+                Status::unknown("Internal server error")
+            })?;
 
         let response = proto::CreateBankAccountResponse {
             account_id: account.id,

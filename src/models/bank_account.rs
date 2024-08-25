@@ -1,3 +1,5 @@
+use std::fmt;
+
 use chrono::Utc;
 use uuid::Uuid;
 
@@ -15,6 +17,16 @@ impl AccountType {
             "INVESTMENT" => Ok(AccountType::INVESTMENT),
             "CASH" => Ok(AccountType::CASH),
             _ => Err("Invalid account type".to_owned()),
+        }
+    }
+}
+
+impl fmt::Display for AccountType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AccountType::CASH => write!(f, "CASH"),
+            AccountType::CHECKING => write!(f, "CHECKING"),
+            AccountType::INVESTMENT => write!(f, "INVESTMENT"),
         }
     }
 }
