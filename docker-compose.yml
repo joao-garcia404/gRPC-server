@@ -1,9 +1,10 @@
 services:
   rust-sqlx-pg:
-    image: bitnami/postgresql
+    image: postgres:latest
+    container_name: grpc-server
     ports: 
       - 5432:5432
     environment:
-      - POSTGRESQL_USERNAME=docker
-      - POSTGRESQL_PASSWORD=docker
-      - POSTGRESQL_DATABASE=rust_sqlx_pg
+      - POSTGRES_USER=root
+      - POSTGRES_PASSWORD=root
+      - POSTGRES_DB=rust_sqlx_pg

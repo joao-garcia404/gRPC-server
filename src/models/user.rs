@@ -1,3 +1,4 @@
+use chrono::Utc;
 use uuid::Uuid;
 
 use argon2::{
@@ -47,10 +48,32 @@ impl User {
             name,
             email,
             password: Password::new(raw_password),
-            created_at: chrono::Utc::now().to_rfc3339(),
+            created_at: Utc::now().to_rfc3339(),
         };
 
         user.password.get_hashed_value()?;
+
+        Ok(user)
+    }
+
+    pub fn from_db(
+        id: String,
+        name: String,
+        email: String,
+        password: String,
+        created_at: String,
+    ) -> Result<User, String> {
+        let user_id = Uuid::try_parse(id.as_str())
+            .map_err(|_err| "Failed to parse user_id as UUID".to_string())?
+            .to_string();
+
+        let user = User {
+            id: user_id,
+            name,
+            email,
+            password: Password::new(password),
+            created_at,
+        };
 
         Ok(user)
     }
