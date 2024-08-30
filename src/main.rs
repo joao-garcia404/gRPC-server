@@ -90,7 +90,7 @@ impl FinanceControl for FinanceControlService {
             })?;
 
         let account_type = bank_account::AccountType::from_raw_string(&input.account_type.as_str())
-            .map_err(|err| Status::invalid_argument(err))?;
+            .map_err(|err| Status::invalid_argument(err.get_message()))?;
 
         let account = bank_account::BankAccount::new(
             input.name,
@@ -98,7 +98,7 @@ impl FinanceControl for FinanceControlService {
             account_type,
             input.user_id,
         )
-        .map_err(|err| Status::invalid_argument(err))?;
+        .map_err(|err| Status::invalid_argument(err.get_message()))?;
 
         let insert_bank_account_query =
         "INSERT INTO bank_accounts (id, name, balance, type, user_id, created_at) VALUES ($1::uuid, $2, $3, $4::bankaccounttype, $5::uuid, $6::timestamp)";

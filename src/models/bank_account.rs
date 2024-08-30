@@ -3,6 +3,36 @@ use std::fmt;
 use chrono::Utc;
 use uuid::Uuid;
 
+enum BankAccountErrorType {
+    InvalidAccountType,
+    UserIdParse,
+}
+
+pub struct BankAccountError {
+    action: BankAccountErrorType,
+}
+
+impl BankAccountError {
+    fn new(action: BankAccountErrorType) -> Self {
+        BankAccountError { action }
+    }
+
+    pub fn account_type() -> Self {
+        BankAccountError::new(BankAccountErrorType::InvalidAccountType)
+    }
+
+    pub fn user_id_parse() -> Self {
+        BankAccountError::new(BankAccountErrorType::UserIdParse)
+    }
+
+    pub fn get_message(&self) -> String {
+        match self.action {
+            BankAccountErrorType::InvalidAccountType => "Invalid account type".to_owned(),
+            BankAccountErrorType::UserIdParse => "Failed to parse user id as a UUID".to_owned(),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum AccountType {
     CHECKING,
@@ -11,12 +41,12 @@ pub enum AccountType {
 }
 
 impl AccountType {
-    pub fn from_raw_string(raw: &str) -> Result<AccountType, String> {
+    pub fn from_raw_string(raw: &str) -> Result<AccountType, BankAccountError> {
         match raw {
             "CHECKING" => Ok(AccountType::CHECKING),
             "INVESTMENT" => Ok(AccountType::INVESTMENT),
             "CASH" => Ok(AccountType::CASH),
-            _ => Err("Invalid account type".to_owned()),
+            _ => Err(BankAccountError::account_type()),
         }
     }
 }
@@ -47,9 +77,9 @@ impl BankAccount {
         balance: i64,
         account_type: AccountType,
         user_id: String,
-    ) -> Result<BankAccount, String> {
+    ) -> Result<BankAccount, BankAccountError> {
         let user_id = Uuid::try_parse(user_id.as_str())
-            .map_err(|_err| "Failed to parse user_id as UUID".to_string())?
+            .map_err(|_err| BankAccountError::user_id_parse())?
             .to_string();
 
         Ok(BankAccount {
