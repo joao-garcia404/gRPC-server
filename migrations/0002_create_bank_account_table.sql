@@ -10,7 +10,7 @@ CREATE TABLE bank_accounts (
   user_id UUID,
   name VARCHAR(255) NOT NULL,
   type BankAccountType NOT NULL,
-  balance INTEGER NOT NULL,
+  balance BIGINT NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id),
 
