@@ -25,7 +25,7 @@ type State = Arc<tokio::sync::RwLock<u64>>;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenv().ok();
 
-    let db_url: &str = &env::var("DATABASE_URL").unwrap();
+    let db_url: &str = &env::var("DATABASE_URL").expect("DATABASE_URL not present.");
     let pool = PgPool::connect(db_url)
         .await
         .expect("Failed to connect to database");

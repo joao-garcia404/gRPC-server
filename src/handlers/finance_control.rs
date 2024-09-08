@@ -5,6 +5,7 @@ use tonic::{Request, Response, Status};
 use crate::proto::finance_control_server::FinanceControl;
 
 use crate::models::bank_account;
+use crate::models::transaction::{Transaction, TransactionType};
 use crate::models::user::User;
 use crate::proto;
 
@@ -71,17 +72,14 @@ impl FinanceControl for FinanceControlService {
             .bind(&input.user_id)
             .fetch_one(&self.db_pool)
             .await
-            .map_err(|err| {
-                println!("{err}");
-                Status::invalid_argument("User not found".to_owned())
-            })?;
+            .map_err(|_err| Status::invalid_argument("User not found".to_owned()))?;
 
         let account_type = bank_account::AccountType::from_raw_string(&input.account_type.as_str())
             .map_err(|err| Status::invalid_argument(err.get_message()))?;
 
         let account = bank_account::BankAccount::new(
             input.name,
-            input.initial_balance * 100,
+            input.initial_balance * 100.0,
             account_type,
             input.user_id,
         )
@@ -105,7 +103,66 @@ impl FinanceControl for FinanceControlService {
             })?;
 
         let response = proto::CreateBankAccountResponse {
-            account_id: account.id,
+            account_id: account.id.to_string(),
+        };
+
+        Ok(Response::new(response))
+    }
+
+    async fn execute_transaction(
+        &self,
+        request: Request<proto::ExecuteTransactionRequest>,
+    ) -> Result<Response<proto::ExecuteTransactionResponse>, Status> {
+        self.incremet_counter().await;
+        println!("Received a execute transaction request.");
+
+        let input = request.into_inner();
+
+        let account = sqlx::query(
+            r#"SELECT id, name, balance, type, user_id, created_at::text
+               FROM bank_accounts 
+               WHERE id::text = $1"#,
+        )
+        .bind(&input.account_id)
+        .map(|row| bank_account::BankAccount::from_pg_row(row))
+        .fetch_one(&self.db_pool)
+        .await
+        .and_then(|result| {
+            result.map_err(|err| {
+                println!("Error: {:?}", err);
+
+                sqlx::Error::RowNotFound
+            })
+        })
+        .map_err(|err| match err {
+            sqlx::Error::RowNotFound => {
+                Status::invalid_argument("Bank account not found".to_owned())
+            }
+            _ => Status::internal("Internal server error".to_owned()),
+        })?;
+
+        println!("Found account: {:?}", account);
+
+        let transaction_type = TransactionType::from_proto(&input.transaction_type)
+            .map_err(|err| Status::invalid_argument(err))?;
+
+        if transaction_type == TransactionType::OUTCOME && account.balance < input.amount {
+            return Err(Status::invalid_argument(
+                "The account does not have enough funds for the transfer".to_owned(),
+            ));
+        }
+
+        let transaction = Transaction::new(
+            input.amount,
+            transaction_type,
+            input.account_id,
+            input.description,
+        );
+
+        println!("Transaction {:?}", transaction);
+
+        let response = proto::ExecuteTransactionResponse {
+            transaction_id: transaction.id,
         };
 
         Ok(Response::new(response))
