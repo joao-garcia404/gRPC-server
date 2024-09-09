@@ -118,7 +118,7 @@ impl FinanceControl for FinanceControlService {
 
         let input = request.into_inner();
 
-        let account = sqlx::query(
+        let mut account = sqlx::query(
             r#"SELECT id, name, balance, type, user_id, created_at::text
                FROM bank_accounts 
                WHERE id::text = $1"#,
@@ -159,7 +159,53 @@ impl FinanceControl for FinanceControlService {
             input.description,
         );
 
-        println!("Transaction {:?}", transaction);
+        let _new_balance_result = account
+            .update_balance(&transaction)
+            .map_err(|err| Status::invalid_argument(err.get_message()))?;
+
+        let mut txn = self.db_pool.begin().await.map_err(|err| {
+            println!("Error while starting DB transaction: {:?}", err);
+            Status::internal("Internal server error".to_owned())
+        })?;
+
+        let insert_transaction_query = r#"INSERT INTO transactions (id, amount, transaction_type, origin_account_id, description, created_at) VALUES ($1::uuid, $2, $3::transactiontype, $4::uuid, $5, $6::timestamp)"#;
+
+        let amount_to_save = transaction.amount * 100.0;
+
+        let _transaction_result = sqlx::query(insert_transaction_query)
+            .bind(&transaction.id.to_string())
+            .bind(&amount_to_save)
+            .bind(&transaction.transaction_type.to_string())
+            .bind(&transaction.origin_account_id.to_string())
+            .bind(&transaction.description)
+            .bind(&transaction.created_at)
+            .execute(&mut *txn)
+            .await
+            .map_err(|err| {
+                println!("Error while inserting transaction: {:?}", err);
+                Status::internal("Internal server error".to_owned())
+            })?;
+
+        let update_account_balance_query = r#"
+            UPDATE bank_accounts
+            SET balance = $1
+            WHERE id = $2::uuid
+        "#;
+
+        sqlx::query(update_account_balance_query)
+            .bind(&account.balance)
+            .bind(&account.id)
+            .execute(&mut *txn)
+            .await
+            .map_err(|err| {
+                println!("Error while updating account balance: {:?}", err);
+                Status::internal("Internal server error".to_owned())
+            })?;
+
+        txn.commit().await.map_err(|err| {
+            println!("Failed to commit insert transaction: {:?}", err);
+            Status::internal("Internal server error".to_owned())
+        })?;
 
         let response = proto::ExecuteTransactionResponse {
             transaction_id: transaction.id,

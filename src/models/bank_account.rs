@@ -7,10 +7,13 @@ use sqlx::{
 };
 use uuid::Uuid;
 
+use crate::models::transaction::{Transaction, TransactionType};
+
 #[derive(Debug)]
 enum BankAccountErrorType {
     InvalidAccountType,
     UserIdParse,
+    NotEnoughFunds,
 }
 
 #[derive(Debug)]
@@ -31,10 +34,17 @@ impl BankAccountError {
         BankAccountError::new(BankAccountErrorType::UserIdParse)
     }
 
+    pub fn not_enough_funds() -> Self {
+        BankAccountError::new(BankAccountErrorType::NotEnoughFunds)
+    }
+
     pub fn get_message(&self) -> String {
         match self.action {
             BankAccountErrorType::InvalidAccountType => "Invalid account type".to_owned(),
             BankAccountErrorType::UserIdParse => "Failed to parse user id as a UUID".to_owned(),
+            BankAccountErrorType::NotEnoughFunds => {
+                "The account don't have enough funds to complete the transaction".to_owned()
+            }
         }
     }
 }
@@ -44,6 +54,10 @@ impl fmt::Display for BankAccountError {
         match self.action {
             BankAccountErrorType::InvalidAccountType => write!(f, "Invalid account type"),
             BankAccountErrorType::UserIdParse => write!(f, "Failed to parse user id as a UUID"),
+            BankAccountErrorType::NotEnoughFunds => write!(
+                f,
+                "The account don't have enough funds to complete the transaction"
+            ),
         }
     }
 }
@@ -107,6 +121,24 @@ impl BankAccount {
             user_id,
             created_at: Utc::now().to_rfc3339(),
         })
+    }
+
+    pub fn update_balance(&mut self, transaction: &Transaction) -> Result<(), BankAccountError> {
+        match transaction.transaction_type {
+            TransactionType::OUTCOME => {
+                if self.balance < transaction.amount {
+                    return Err(BankAccountError::not_enough_funds());
+                }
+
+                self.balance -= transaction.amount;
+
+                Ok(())
+            }
+            TransactionType::INCOME => {
+                self.balance += transaction.amount;
+                Ok(())
+            }
+        }
     }
 
     pub fn from_pg_row(row: PgRow) -> Result<Self, sqlx::Error> {
