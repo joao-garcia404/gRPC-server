@@ -9,9 +9,11 @@ use tonic::transport::Server;
 
 use handlers::admin::AdminService;
 use handlers::finance_control::FinanceControlService;
+use tracing::{info, warn, Tracing};
 
 pub mod handlers;
 pub mod models;
+pub mod tracing;
 
 mod proto {
     tonic::include_proto!("finance_control");
@@ -25,6 +27,8 @@ type State = Arc<tokio::sync::RwLock<u64>>;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenv().ok();
+
+    Tracing::init();
 
     let db_url: &str = &env::var("DATABASE_URL").expect("DATABASE_URL not present.");
     let pool = PgPool::connect(db_url)
@@ -50,7 +54,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .register_encoded_file_descriptor_set(proto::FILE_DESCRIPTOR_SET)
         .build()?;
 
-    println!("Server running!");
+    info!("Server running!");
 
     Server::builder()
         .add_service(reflection)
@@ -80,5 +84,5 @@ async fn shutdown_signal() {
         _ = ctrl_c => {},
         _ = terminate => {},
     }
-    println!("shutdown signal received");
+    warn!("Shutdown signal received");
 }
