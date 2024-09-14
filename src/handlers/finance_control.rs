@@ -8,6 +8,7 @@ use crate::models::bank_account;
 use crate::models::transaction::{Transaction, TransactionType};
 use crate::models::user::User;
 use crate::proto;
+use crate::tracing::{error, info};
 
 pub struct FinanceControlService {
     pub state: Arc<tokio::sync::RwLock<u64>>,
@@ -18,7 +19,7 @@ impl FinanceControlService {
     async fn incremet_counter(&self) {
         let mut count = self.state.write().await;
         *count += 1;
-        println!("Request count: {}", *count);
+        info!("Request count: {}", *count);
     }
 }
 
@@ -29,12 +30,12 @@ impl FinanceControl for FinanceControlService {
         request: Request<proto::RegisterUserRequest>,
     ) -> Result<Response<proto::RegisterUserResponse>, Status> {
         self.incremet_counter().await;
-        println!("Received a user registration request.");
+        info!("Received a user registration request.");
 
         let input = request.into_inner();
 
         let user = User::new(input.name, input.email, input.password)
-            .map_err(|_err| Status::unknown("Internal server error"))?;
+            .map_err(|_err| Status::internal("Internal server error"))?;
 
         let query =
           "INSERT INTO users (id, name, email, password, created_at) VALUES ($1::uuid, $2, $3, $4, $5::timestamp)";
@@ -48,7 +49,7 @@ impl FinanceControl for FinanceControlService {
             .execute(self.db_pool.as_ref())
             .await
             .map_err(|err| {
-                println!("Error while saving the user {:?}", err);
+                error!("Error while saving the user {:?}", err);
                 Status::unknown("Internal server error")
             })?;
 
@@ -62,7 +63,7 @@ impl FinanceControl for FinanceControlService {
         request: Request<proto::CreateBankAccountRequest>,
     ) -> Result<Response<proto::CreateBankAccountResponse>, Status> {
         self.incremet_counter().await;
-        println!("Received a bank account creation request.");
+        info!("Received a bank account creation request.");
 
         let input = request.into_inner();
 
@@ -98,8 +99,8 @@ impl FinanceControl for FinanceControlService {
             .execute(self.db_pool.as_ref())
             .await
             .map_err(|err| {
-                println!("Error while creating a bank account {:?}", err);
-                Status::unknown("Internal server error")
+                error!("Error while creating a bank account {:?}", err);
+                Status::internal("Internal server error")
             })?;
 
         let response = proto::CreateBankAccountResponse {
@@ -114,7 +115,7 @@ impl FinanceControl for FinanceControlService {
         request: Request<proto::ExecuteTransactionRequest>,
     ) -> Result<Response<proto::ExecuteTransactionResponse>, Status> {
         self.incremet_counter().await;
-        println!("Received a execute transaction request.");
+        info!("Received a execute transaction request.");
 
         let input = request.into_inner();
 
@@ -129,7 +130,7 @@ impl FinanceControl for FinanceControlService {
         .await
         .and_then(|result| {
             result.map_err(|err| {
-                println!("Error: {:?}", err);
+                error!("Error finding bank account: {:?}", err);
 
                 sqlx::Error::RowNotFound
             })
@@ -140,8 +141,6 @@ impl FinanceControl for FinanceControlService {
             }
             _ => Status::internal("Internal server error".to_owned()),
         })?;
-
-        println!("Found account: {:?}", account);
 
         let transaction_type = TransactionType::from_proto(&input.transaction_type)
             .map_err(|err| Status::invalid_argument(err))?;
@@ -164,7 +163,7 @@ impl FinanceControl for FinanceControlService {
             .map_err(|err| Status::invalid_argument(err.get_message()))?;
 
         let mut txn = self.db_pool.as_ref().begin().await.map_err(|err| {
-            println!("Error while starting DB transaction: {:?}", err);
+            error!("Error while starting DB transaction: {:?}", err);
             Status::internal("Internal server error".to_owned())
         })?;
 
@@ -182,7 +181,7 @@ impl FinanceControl for FinanceControlService {
             .execute(&mut *txn)
             .await
             .map_err(|err| {
-                println!("Error while inserting transaction: {:?}", err);
+                error!("Error while inserting transaction: {:?}", err);
                 Status::internal("Internal server error".to_owned())
             })?;
 
@@ -200,12 +199,12 @@ impl FinanceControl for FinanceControlService {
             .execute(&mut *txn)
             .await
             .map_err(|err| {
-                println!("Error while updating account balance: {:?}", err);
+                error!("Error while updating account balance: {:?}", err);
                 Status::internal("Internal server error".to_owned())
             })?;
 
         txn.commit().await.map_err(|err| {
-            println!("Failed to commit insert transaction: {:?}", err);
+            error!("Failed to commit insert transaction: {:?}", err);
             Status::internal("Internal server error".to_owned())
         })?;
 
