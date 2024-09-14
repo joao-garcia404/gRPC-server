@@ -1,0 +1,23 @@
+FROM rust:1.81-alpine as builder
+
+# Install build dependencies
+RUN apk add --no-cache musl-dev protoc
+
+# Copy the entire project to the container
+COPY .. /usr/src/app
+
+WORKDIR /usr/src/app
+
+# Build for the host architecture
+RUN cargo build --release --bin grpc_server
+
+FROM alpine:3.18 as runner
+
+RUN apk add --no-cache ca-certificates
+
+# Copy the built binary from the builder stage
+COPY --from=builder /usr/src/app/target/release/grpc_server /grpc_server
+
+EXPOSE 50051
+
+CMD ["/grpc_server"]

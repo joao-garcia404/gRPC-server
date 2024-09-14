@@ -1,10 +1,21 @@
 services:
   rust-sqlx-pg:
     image: postgres:latest
-    container_name: grpc-server
+    container_name: grpc-server-database
     ports: 
       - 5432:5432
     environment:
       - POSTGRES_USER=root
       - POSTGRES_PASSWORD=root
       - POSTGRES_DB=rust_sqlx_pg
+  server:
+    build:
+      context: .
+      dockerfile: .docker/Dockerfile.server
+    container_name: grpc-server
+    ports:
+      - 50051:50051
+    depends_on:
+      - rust-sqlx-pg
+    environment:
+      - DATABASE_URL=postgresql://root:root@rust-sqlx-pg:5432/rust_sqlx_pg

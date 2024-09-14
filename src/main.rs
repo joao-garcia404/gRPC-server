@@ -4,6 +4,7 @@ use proto::finance_control_server::FinanceControlServer;
 use sqlx::postgres::PgPool;
 use std::env;
 use std::{net::SocketAddr, sync::Arc};
+use tokio::signal;
 use tonic::transport::Server;
 
 use handlers::admin::AdminService;
@@ -32,7 +33,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     sqlx::migrate!("./migrations").run(&pool).await?;
 
-    let addr: SocketAddr = "[::1]:50051".parse()?;
+    let addr: SocketAddr = "0.0.0.0:50051".parse().unwrap();
 
     let state = State::default();
 
@@ -49,14 +50,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .register_encoded_file_descriptor_set(proto::FILE_DESCRIPTOR_SET)
         .build()?;
 
+    println!("Server running!");
+
     Server::builder()
         .add_service(reflection)
         .add_service(AdminServer::new(admin))
         .add_service(FinanceControlServer::new(finance))
-        .serve(addr)
+        .serve_with_shutdown(addr, shutdown_signal())
         .await?;
 
-    println!("Server running!");
-
     Ok(())
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("failed to install SIGINT handler");
+    };
+
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("failed to install SIGTERM handler")
+            .recv()
+            .await;
+    };
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+    println!("shutdown signal received");
 }
