@@ -11,7 +11,7 @@ use crate::proto;
 
 pub struct FinanceControlService {
     pub state: Arc<tokio::sync::RwLock<u64>>,
-    pub db_pool: PgPool,
+    pub db_pool: Arc<PgPool>,
 }
 
 impl FinanceControlService {
@@ -45,7 +45,7 @@ impl FinanceControl for FinanceControlService {
             .bind(&user.email)
             .bind(&user.password.value)
             .bind(&user.created_at)
-            .execute(&self.db_pool)
+            .execute(self.db_pool.as_ref())
             .await
             .map_err(|err| {
                 println!("Error while saving the user {:?}", err);
@@ -70,7 +70,7 @@ impl FinanceControl for FinanceControlService {
 
         let _ = sqlx::query(user_exists_query)
             .bind(&input.user_id)
-            .fetch_one(&self.db_pool)
+            .fetch_one(self.db_pool.as_ref())
             .await
             .map_err(|_err| Status::invalid_argument("User not found".to_owned()))?;
 
@@ -95,7 +95,7 @@ impl FinanceControl for FinanceControlService {
             .bind(&account.account_type.to_string())
             .bind(&account.user_id)
             .bind(&account.created_at)
-            .execute(&self.db_pool)
+            .execute(self.db_pool.as_ref())
             .await
             .map_err(|err| {
                 println!("Error while creating a bank account {:?}", err);
@@ -118,14 +118,14 @@ impl FinanceControl for FinanceControlService {
 
         let input = request.into_inner();
 
-        let account = sqlx::query(
+        let mut account = sqlx::query(
             r#"SELECT id, name, balance, type, user_id, created_at::text
                FROM bank_accounts 
                WHERE id::text = $1"#,
         )
         .bind(&input.account_id)
         .map(|row| bank_account::BankAccount::from_pg_row(row))
-        .fetch_one(&self.db_pool)
+        .fetch_one(self.db_pool.as_ref())
         .await
         .and_then(|result| {
             result.map_err(|err| {
@@ -159,7 +159,55 @@ impl FinanceControl for FinanceControlService {
             input.description,
         );
 
-        println!("Transaction {:?}", transaction);
+        let _new_balance_result = account
+            .update_balance(&transaction)
+            .map_err(|err| Status::invalid_argument(err.get_message()))?;
+
+        let mut txn = self.db_pool.as_ref().begin().await.map_err(|err| {
+            println!("Error while starting DB transaction: {:?}", err);
+            Status::internal("Internal server error".to_owned())
+        })?;
+
+        let insert_transaction_query = r#"INSERT INTO transactions (id, amount, transaction_type, origin_account_id, description, created_at) VALUES ($1::uuid, $2, $3::transactiontype, $4::uuid, $5, $6::timestamp)"#;
+
+        let amount_to_save = transaction.amount * 100.0;
+
+        let _transaction_result = sqlx::query(insert_transaction_query)
+            .bind(&transaction.id.to_string())
+            .bind(&amount_to_save)
+            .bind(&transaction.transaction_type.to_string())
+            .bind(&transaction.origin_account_id.to_string())
+            .bind(&transaction.description)
+            .bind(&transaction.created_at)
+            .execute(&mut *txn)
+            .await
+            .map_err(|err| {
+                println!("Error while inserting transaction: {:?}", err);
+                Status::internal("Internal server error".to_owned())
+            })?;
+
+        let update_account_balance_query = r#"
+            UPDATE bank_accounts
+            SET balance = $1
+            WHERE id = $2::uuid
+        "#;
+
+        let updated_balance = (account.balance * 100.0) as i64;
+
+        sqlx::query(update_account_balance_query)
+            .bind(&updated_balance)
+            .bind(&account.id)
+            .execute(&mut *txn)
+            .await
+            .map_err(|err| {
+                println!("Error while updating account balance: {:?}", err);
+                Status::internal("Internal server error".to_owned())
+            })?;
+
+        txn.commit().await.map_err(|err| {
+            println!("Failed to commit insert transaction: {:?}", err);
+            Status::internal("Internal server error".to_owned())
+        })?;
 
         let response = proto::ExecuteTransactionResponse {
             transaction_id: transaction.id,

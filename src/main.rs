@@ -38,7 +38,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let finance = FinanceControlService {
         state: state.clone(),
-        db_pool: pool,
+        db_pool: Arc::new(pool),
     };
 
     let admin = AdminService {
