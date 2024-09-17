@@ -1,4 +1,5 @@
 use chrono::Utc;
+use thiserror::Error;
 use uuid::Uuid;
 
 use argon2::{
@@ -6,7 +7,7 @@ use argon2::{
     Argon2,
 };
 
-#[derive(Debug)]
+#[derive(Debug, sqlx::FromRow)]
 pub struct Password {
     pub value: String,
 }
@@ -16,7 +17,7 @@ impl Password {
         Password { value: raw }
     }
 
-    pub fn get_hashed_value(&mut self) -> Result<(), String> {
+    pub fn get_hashed_value(&mut self) -> Result<(), UserError> {
         let salt = SaltString::generate(&mut OsRng);
 
         let argon2 = Argon2::default();
@@ -27,12 +28,21 @@ impl Password {
                 self.value = hashed.to_string();
                 Ok(())
             }
-            Err(_hash_error) => Err("Error at hashing password".to_owned()),
+            Err(_hash_error) => Err(UserError::PasswordHash),
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
+pub enum UserError {
+    #[error("Email already in use")]
+    EmailAlreadyInUse,
+
+    #[error("Internal server error")]
+    PasswordHash,
+}
+
+#[derive(Debug, sqlx::FromRow)]
 pub struct User {
     pub id: String,
     pub name: String,
@@ -42,7 +52,7 @@ pub struct User {
 }
 
 impl User {
-    pub fn new(name: String, email: String, raw_password: String) -> Result<User, String> {
+    pub fn new(name: String, email: String, raw_password: String) -> Result<User, UserError> {
         let mut user = User {
             id: Uuid::new_v4().to_string(),
             name,

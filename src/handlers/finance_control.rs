@@ -6,7 +6,7 @@ use crate::proto::finance_control_server::FinanceControl;
 
 use crate::models::bank_account;
 use crate::models::transaction::{Transaction, TransactionType};
-use crate::models::user::User;
+use crate::models::user::{User, UserError};
 use crate::proto;
 use crate::tracing::{error, info};
 
@@ -34,8 +34,21 @@ impl FinanceControl for FinanceControlService {
 
         let input = request.into_inner();
 
+        let user_exists_query = "SELECT * FROM users WHERE email = $1";
+
+        let user_result = sqlx::query(user_exists_query)
+            .bind(&input.email)
+            .fetch_one(self.db_pool.as_ref())
+            .await;
+
+        if let Ok(_user) = user_result {
+            return Err(Status::invalid_argument(
+                UserError::EmailAlreadyInUse.to_string(),
+            ));
+        }
+
         let user = User::new(input.name, input.email, input.password)
-            .map_err(|_err| Status::internal("Internal server error"))?;
+            .map_err(|err| Status::internal(err.to_string()))?;
 
         let query =
           "INSERT INTO users (id, name, email, password, created_at) VALUES ($1::uuid, $2, $3, $4, $5::timestamp)";
@@ -76,7 +89,7 @@ impl FinanceControl for FinanceControlService {
             .map_err(|_err| Status::invalid_argument("User not found".to_owned()))?;
 
         let account_type = bank_account::AccountType::from_raw_string(&input.account_type.as_str())
-            .map_err(|err| Status::invalid_argument(err.get_message()))?;
+            .map_err(|err| Status::invalid_argument(err.to_string()))?;
 
         let account = bank_account::BankAccount::new(
             input.name,
@@ -84,7 +97,7 @@ impl FinanceControl for FinanceControlService {
             account_type,
             input.user_id,
         )
-        .map_err(|err| Status::invalid_argument(err.get_message()))?;
+        .map_err(|err| Status::invalid_argument(err.to_string()))?;
 
         let insert_bank_account_query =
       "INSERT INTO bank_accounts (id, name, balance, type, user_id, created_at) VALUES ($1::uuid, $2, $3, $4::bankaccounttype, $5::uuid, $6::timestamp)";
@@ -160,7 +173,7 @@ impl FinanceControl for FinanceControlService {
 
         let _new_balance_result = account
             .update_balance(&transaction)
-            .map_err(|err| Status::invalid_argument(err.get_message()))?;
+            .map_err(|err| Status::invalid_argument(err.to_string()))?;
 
         let mut txn = self.db_pool.as_ref().begin().await.map_err(|err| {
             error!("Error while starting DB transaction: {:?}", err);

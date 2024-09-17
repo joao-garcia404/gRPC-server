@@ -5,18 +5,22 @@ use sqlx::{
     postgres::{PgRow, Postgres},
     FromRow, Row,
 };
+use thiserror::Error;
 use uuid::Uuid;
 
 use crate::models::transaction::{Transaction, TransactionType};
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 enum BankAccountErrorType {
+    #[error("Invalid account type")]
     InvalidAccountType,
+    #[error("Failed to parse user id as a UUID")]
     UserIdParse,
+    #[error("The account don't have enough funds to complete the transaction")]
     NotEnoughFunds,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub struct BankAccountError {
     action: BankAccountErrorType,
 }
@@ -37,32 +41,13 @@ impl BankAccountError {
     pub fn not_enough_funds() -> Self {
         BankAccountError::new(BankAccountErrorType::NotEnoughFunds)
     }
-
-    pub fn get_message(&self) -> String {
-        match self.action {
-            BankAccountErrorType::InvalidAccountType => "Invalid account type".to_owned(),
-            BankAccountErrorType::UserIdParse => "Failed to parse user id as a UUID".to_owned(),
-            BankAccountErrorType::NotEnoughFunds => {
-                "The account don't have enough funds to complete the transaction".to_owned()
-            }
-        }
-    }
 }
 
-impl fmt::Display for BankAccountError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.action {
-            BankAccountErrorType::InvalidAccountType => write!(f, "Invalid account type"),
-            BankAccountErrorType::UserIdParse => write!(f, "Failed to parse user id as a UUID"),
-            BankAccountErrorType::NotEnoughFunds => write!(
-                f,
-                "The account don't have enough funds to complete the transaction"
-            ),
-        }
+impl std::fmt::Display for BankAccountError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.action)
     }
 }
-
-impl std::error::Error for BankAccountError {}
 
 #[derive(sqlx::Type, Debug, Clone, PartialEq)]
 #[sqlx(type_name = "bankaccounttype", rename_all = "UPPERCASE")]
