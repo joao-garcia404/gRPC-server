@@ -9,9 +9,11 @@ use tonic::transport::Server;
 
 use handlers::admin::AdminService;
 use handlers::finance_control::FinanceControlService;
+use layers::authorization::AuthorizationLayer;
 use tracing::{info, warn, Tracing};
 
 pub mod handlers;
+pub mod layers;
 pub mod models;
 pub mod tracing;
 
@@ -37,8 +39,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     sqlx::migrate!("./migrations").run(&pool).await?;
 
-    let addr: SocketAddr = "0.0.0.0:50051".parse().unwrap();
-
     let state = State::default();
 
     let finance = FinanceControlService {
@@ -54,9 +54,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .register_encoded_file_descriptor_set(proto::FILE_DESCRIPTOR_SET)
         .build()?;
 
+    let addr: SocketAddr = "0.0.0.0:50051".parse().unwrap();
+
     info!("Server running!");
 
     Server::builder()
+        .layer(AuthorizationLayer::default())
         .add_service(reflection)
         .add_service(AdminServer::new(admin))
         .add_service(FinanceControlServer::new(finance))
